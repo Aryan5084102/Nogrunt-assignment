@@ -17,7 +17,7 @@ export default function ProductManager() {
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
   const [toast, setToast] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
 
-  const pageTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const currentItems = products.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
