@@ -18,7 +18,7 @@ export default function ProductManager() {
   const [toast, setToast] = useState<string | null>(null);
 
   // --- NEW: Timer for slow page switching ---
-  const pageTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const currentItems = products.slice(startIndex, startIndex + ITEMS_PER_PAGE);
