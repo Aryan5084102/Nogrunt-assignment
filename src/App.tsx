@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useState, useRef } from 'react'; // Added useRef
 import { Package, GripVertical, ChevronLeft, ChevronRight, CheckCircle2, Menu } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 8;
@@ -17,6 +17,9 @@ export default function ProductManager() {
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  // --- NEW: Timer for slow page switching ---
+  const pageTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const currentItems = products.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
@@ -30,13 +33,28 @@ export default function ProductManager() {
     setDropTargetIndex(index);
   };
 
+  // --- UPDATED: Controlled Page Hover Logic ---
   const handlePageHover = (newPage: number) => {
-    if (draggedIndex !== null && newPage >= 1 && newPage <= 5) {
+    // Agar drag nahi ho raha, ya timer pehle se chal raha hai, ya page range se bahar hai, toh return
+    if (draggedIndex === null || pageTimerRef.current || newPage < 1 || newPage > 5) return;
+
+    // 800ms ka delay taaki page "slowly" switch ho (1 -> 2 -> 3)
+    pageTimerRef.current = setTimeout(() => {
       setPage(newPage);
+      pageTimerRef.current = null; // Reset timer so it can run for the next page
+    }, 800); 
+  };
+
+  // Function to stop the timer when cursor leaves the button
+  const stopPageTimer = () => {
+    if (pageTimerRef.current) {
+      clearTimeout(pageTimerRef.current);
+      pageTimerRef.current = null;
     }
   };
 
   const onDrop = (localIndex: number) => {
+    stopPageTimer(); // Safety stop
     if (draggedIndex === null) return;
     const globalTargetIndex = (page - 1) * ITEMS_PER_PAGE + localIndex;
     const itemName = products[draggedIndex].name;
@@ -54,14 +72,14 @@ export default function ProductManager() {
     <div className="min-h-screen bg-[#0f172a] text-white p-4 md:p-8 font-sans">
       <div className="max-w-4xl mx-auto">
         
-        {/* Toast - Responsive positioning */}
+        {/* Toast */}
         {toast && (
           <div className="fixed top-4 left-1/2 -translate-x-1/2 md:left-auto md:right-5 md:translate-x-0 bg-[#3bdf7f] text-black px-4 py-2 md:px-6 md:py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-bounce z-[1000] text-sm md:text-base font-bold whitespace-nowrap">
             <CheckCircle2 size={18} /> {toast}
           </div>
         )}
 
-        {/* Header - Responsive Flex */}
+        {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8 bg-[#1e293b] p-5 md:p-6 rounded-3xl border border-white/5 shadow-xl">
           <div className="text-center md:text-left">
             <h1 className="text-2xl md:text-3xl font-black bg-gradient-to-r from-[#ba6b3f] to-[#f86e42] bg-clip-text text-transparent italic tracking-tighter">
@@ -70,12 +88,12 @@ export default function ProductManager() {
             <p className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mt-1">Inventory Management</p>
           </div>
           
-          {/* Pagination - Full width on mobile */}
           <div className="flex items-center justify-between w-full md:w-auto gap-4 bg-black/20 p-2 rounded-2xl border border-white/5">
             <button 
               onDragOver={() => handlePageHover(page - 1)}
+              onDragLeave={stopPageTimer} // Mouse hat-te hi timer stop
               className={`p-3 rounded-xl transition-all ${draggedIndex !== null ? 'bg-[#3bdf7f]/20 text-[#3bdf7f] animate-pulse' : 'hover:bg-white/5'}`}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              onClick={() => { stopPageTimer(); setPage(p => Math.max(1, p - 1)); }}
             >
               <ChevronLeft size={24} />
             </button>
@@ -85,15 +103,16 @@ export default function ProductManager() {
             </div>
             <button 
               onDragOver={() => handlePageHover(page + 1)}
+              onDragLeave={stopPageTimer} // Mouse hat-te hi timer stop
               className={`p-3 rounded-xl transition-all ${draggedIndex !== null ? 'bg-[#3bdf7f]/20 text-[#3bdf7f] animate-pulse' : 'hover:bg-white/5'}`}
-              onClick={() => setPage(p => Math.min(5, p + 1))}
+              onClick={() => { stopPageTimer(); setPage(p => Math.min(5, p + 1)); }}
             >
               <ChevronRight size={24} />
             </button>
           </div>
         </header>
 
-        {/* List Container - Responsive Grid */}
+        {/* List Container */}
         <div className="grid grid-cols-1 sm:grid-cols-1 gap-4 relative">
           {currentItems.map((item, index) => {
             const isBeingDragged = draggedIndex === startIndex + index;
@@ -128,7 +147,6 @@ export default function ProductManager() {
                   </div>
                 </div>
                 
-                {/* Drag Indicator for Touch/Visual */}
                 <div className="md:hidden text-slate-600">
                   <Menu size={20} />
                 </div>
