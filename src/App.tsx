@@ -1,6 +1,6 @@
 "use client";
-import { useState, useRef } from 'react'; // Added useRef
-import { Package, GripVertical, ChevronLeft, ChevronRight, CheckCircle2, Menu } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Package, GripVertical, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Move } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 8;
 const TOTAL_ITEMS = 40;
@@ -15,11 +15,9 @@ export default function ProductManager() {
   const [page, setPage] = useState(1);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
 
-  // --- NEW: Timer for slow page switching ---
-  const pageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+  const pageTimerRef = useRef<NodeJS.Timeout | null>(null);
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const currentItems = products.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
@@ -28,24 +26,6 @@ export default function ProductManager() {
     e.dataTransfer.effectAllowed = "move";
   };
 
-  const onDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    setDropTargetIndex(index);
-  };
-
-  // --- UPDATED: Controlled Page Hover Logic ---
-  const handlePageHover = (newPage: number) => {
-    // Agar drag nahi ho raha, ya timer pehle se chal raha hai, ya page range se bahar hai, toh return
-    if (draggedIndex === null || pageTimerRef.current || newPage < 1 || newPage > 5) return;
-
-    // 800ms ka delay taaki page "slowly" switch ho (1 -> 2 -> 3)
-    pageTimerRef.current = setTimeout(() => {
-      setPage(newPage);
-      pageTimerRef.current = null; // Reset timer so it can run for the next page
-    }, 800); 
-  };
-
-  // Function to stop the timer when cursor leaves the button
   const stopPageTimer = () => {
     if (pageTimerRef.current) {
       clearTimeout(pageTimerRef.current);
@@ -53,67 +33,116 @@ export default function ProductManager() {
     }
   };
 
-  const onDrop = (localIndex: number) => {
-    stopPageTimer(); // Safety stop
-    if (draggedIndex === null) return;
-    const globalTargetIndex = (page - 1) * ITEMS_PER_PAGE + localIndex;
+  const handlePageHover = (newPage: number) => {
+    if (draggedIndex === null || newPage < 1 || newPage > 5 || page === newPage) return;
+    stopPageTimer(); 
+    pageTimerRef.current = setTimeout(() => {
+      setPage(newPage);
+      pageTimerRef.current = null;
+    }, 700);
+  };
+
+  const onDrop = (localIndex: number | null) => {
+    stopPageTimer();
+    
+    // ISSUE #3 FIX: Handle null drops or missed drop zones
+    if (draggedIndex === null) {
+      setToast({ msg: "Drop Failed: No item was actively being dragged.", type: 'error' });
+      return;
+    }
+
+    const targetIdx = localIndex ?? dropTargetIndex ?? 0;
+    const globalTargetIndex = (page - 1) * ITEMS_PER_PAGE + targetIdx;
+
+    // CORNER CASE: Dropping in the exact same spot
+    if (draggedIndex === globalTargetIndex) {
+      setDraggedIndex(null);
+      setDropTargetIndex(null);
+      // No message needed as nothing changed
+      return;
+    }
+
+    const sourcePage = Math.floor(draggedIndex / ITEMS_PER_PAGE) + 1;
     const itemName = products[draggedIndex].name;
+    
+    // --- UPDATED DESCRIPTIVE MESSAGING ENGINE ---
+    let message = "";
+    if (sourcePage === page) {
+      // Logic for Same Page movement
+      message = `Successfully reordered "${itemName}" at Position ${globalTargetIndex + 1} on Page ${page}.`;
+    } else {
+      // Logic for Cross Page movement
+      message = `Transferred "${itemName}" from Page ${sourcePage} to Page ${page} (Slot ${targetIdx + 1}).`;
+    }
+
     const newProducts = [...products];
     const [removed] = newProducts.splice(draggedIndex, 1);
     newProducts.splice(globalTargetIndex, 0, removed);
+    
     setProducts(newProducts);
     setDraggedIndex(null);
     setDropTargetIndex(null);
-    setToast(`Moved ${itemName} to Page ${page}`);
-    setTimeout(() => setToast(null), 3000);
+    setToast({ msg: message, type: 'success' });
+    setTimeout(() => setToast(null), 4000);
   };
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-white p-4 md:p-8 font-sans">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-[#0f172a] text-white p-4 md:p-8 font-sans flex items-center justify-center">
+      <div className="max-w-2xl w-full bg-[#1e293b] rounded-[2.5rem] border border-white/5 shadow-2xl overflow-hidden flex flex-col h-[750px] relative">
         
-        {/* Toast */}
+        {/* IMPROVED TOAST UI FOR BETTER READABILITY */}
         {toast && (
-          <div className="fixed top-4 left-1/2 -translate-x-1/2 md:left-auto md:right-5 md:translate-x-0 bg-[#3bdf7f] text-black px-4 py-2 md:px-6 md:py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-bounce z-[1000] text-sm md:text-base font-bold whitespace-nowrap">
-            <CheckCircle2 size={18} /> {toast}
+          <div className={`fixed top-10 left-1/2 -translate-x-1/2 min-w-[320px] ${toast.type === 'success' ? 'bg-[#3bdf7f]' : 'bg-red-500'} text-black px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 z-[1000] font-bold animate-in fade-in zoom-in slide-in-from-top-4 duration-300`}>
+            {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
+            <span className="text-sm uppercase tracking-tight leading-tight">{toast.msg}</span>
           </div>
         )}
 
-        {/* Header */}
-        <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8 bg-[#1e293b] p-5 md:p-6 rounded-3xl border border-white/5 shadow-xl">
-          <div className="text-center md:text-left">
-            <h1 className="text-2xl md:text-3xl font-black bg-gradient-to-r from-[#ba6b3f] to-[#f86e42] bg-clip-text text-transparent italic tracking-tighter">
-              NOGRUNT PRO
+        <header className="sticky top-0 z-[100] bg-[#1e293b]/95 backdrop-blur-md p-6 border-b border-white/5 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="text-center sm:text-left">
+            <h1 className="text-2xl font-black bg-gradient-to-r from-[#ba6b3f] to-[#f86e42] bg-clip-text text-transparent italic tracking-tighter uppercase">
+              Nogrunt 
             </h1>
-            <p className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mt-1">Inventory Management</p>
+            <p className="text-slate-500 text-[9px] font-mono uppercase tracking-[0.2em] mt-0.5 italic">Assignment</p>
           </div>
           
-          <div className="flex items-center justify-between w-full md:w-auto gap-4 bg-black/20 p-2 rounded-2xl border border-white/5">
+          <div className="flex items-center gap-4 bg-black/30 p-1.5 rounded-2xl border border-white/5 group">
             <button 
               onDragOver={() => handlePageHover(page - 1)}
-              onDragLeave={stopPageTimer} // Mouse hat-te hi timer stop
-              className={`p-3 rounded-xl transition-all ${draggedIndex !== null ? 'bg-[#3bdf7f]/20 text-[#3bdf7f] animate-pulse' : 'hover:bg-white/5'}`}
+              onDragLeave={stopPageTimer}
               onClick={() => { stopPageTimer(); setPage(p => Math.max(1, p - 1)); }}
+              disabled={page === 1}
+              className={`p-2.5 rounded-xl transition-all ${draggedIndex !== null && page > 1 ? 'bg-[#3bdf7f]/20 text-[#3bdf7f] animate-pulse scale-110' : 'text-slate-500 hover:bg-white/5 disabled:opacity-20'}`}
             >
-              <ChevronLeft size={24} />
+              <ChevronLeft size={22} />
             </button>
-            <div className="text-center px-4 min-w-[80px]">
-              <p className="text-[10px] text-slate-500 font-mono">PAGE</p>
-              <p className="font-black text-xl leading-none">{page} / 5</p>
+
+            <div className="flex flex-col items-center min-w-[90px]">
+              <span className="text-[10px] text-slate-500 font-mono font-bold uppercase tracking-widest">Page</span>
+              <div className="flex items-baseline gap-1">
+                <span className="text-xl font-black text-white">{page}</span>
+                <span className="text-slate-600 font-bold">/</span>
+                <span className="text-sm font-bold text-slate-500">5</span>
+              </div>
             </div>
+
             <button 
               onDragOver={() => handlePageHover(page + 1)}
-              onDragLeave={stopPageTimer} // Mouse hat-te hi timer stop
-              className={`p-3 rounded-xl transition-all ${draggedIndex !== null ? 'bg-[#3bdf7f]/20 text-[#3bdf7f] animate-pulse' : 'hover:bg-white/5'}`}
+              onDragLeave={stopPageTimer}
               onClick={() => { stopPageTimer(); setPage(p => Math.min(5, p + 1)); }}
+              disabled={page === 5}
+              className={`p-2.5 rounded-xl transition-all ${draggedIndex !== null && page < 5 ? 'bg-[#3bdf7f]/20 text-[#3bdf7f] animate-pulse scale-110' : 'text-slate-500 hover:bg-white/5 disabled:opacity-20'}`}
             >
-              <ChevronRight size={24} />
+              <ChevronRight size={22} />
             </button>
           </div>
         </header>
 
-        {/* List Container */}
-        <div className="grid grid-cols-1 sm:grid-cols-1 gap-4 relative">
+        <div 
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => onDrop(null)}
+            className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3 custom-scrollbar"
+        >
           {currentItems.map((item, index) => {
             const isBeingDragged = draggedIndex === startIndex + index;
             const isDropTarget = dropTargetIndex === index;
@@ -123,43 +152,44 @@ export default function ProductManager() {
                 key={item.id}
                 draggable
                 onDragStart={(e) => onDragStart(e, startIndex + index)}
-                onDragOver={(e) => onDragOver(e, index)}
+                onDragOver={(e) => { e.preventDefault(); setDropTargetIndex(index); }}
                 onDragLeave={() => setDropTargetIndex(null)}
-                onDrop={() => onDrop(index)}
-                className={`group relative flex items-center justify-between p-4 md:p-6 rounded-2xl border-2 transition-all duration-300 cursor-move ${
-                  isBeingDragged ? 'opacity-20 scale-95 border-dashed' : 
-                  isDropTarget ? 'border-[#3bdf7f] bg-[#3bdf7f]/10 translate-y-1' : 
-                  'border-white/5 bg-[#1e293b] hover:border-[#ba6b3f]/40'
+                onDragEnd={() => { setDraggedIndex(null); setDropTargetIndex(null); stopPageTimer(); }}
+                onDrop={(e) => { e.stopPropagation(); onDrop(index); }}
+                className={`group relative flex items-center justify-between p-4 rounded-2xl border-2 transition-all duration-300 cursor-move ${
+                  isBeingDragged ? 'opacity-20 scale-95 border-dashed border-[#ba6b3f]' : 
+                  isDropTarget ? 'border-[#3bdf7f] bg-[#3bdf7f]/10 translate-x-1' : 
+                  'border-white/5 bg-[#0f172a]/40 hover:border-white/20'
                 }`}
               >
-                <div className="flex items-center gap-3 md:gap-6 overflow-hidden">
-                  <GripVertical className="hidden md:block text-slate-700 group-hover:text-slate-400" size={24} />
-                  <div className={`h-10 w-10 md:h-14 md:w-14 shrink-0 rounded-xl md:rounded-2xl flex items-center justify-center transition-colors ${isDropTarget ? 'bg-[#3bdf7f] text-black' : 'bg-slate-800 text-[#3bdf7f]'}`}>
-                    <Package size={22} className="md:hidden" />
-                    <Package size={28} className="hidden md:block" />
+                <div className="flex items-center gap-4">
+                  <GripVertical className="text-slate-700 group-hover:text-slate-400" size={18} />
+                  <div className={`h-11 w-11 rounded-xl flex items-center justify-center transition-colors ${isDropTarget ? 'bg-[#3bdf7f] text-black' : 'bg-slate-800 text-[#3bdf7f]'}`}>
+                    <Package size={22} />
                   </div>
                   <div className="truncate">
-                    <p className="font-bold text-base md:text-lg tracking-tight truncate">{item.name}</p>
-                    <div className="flex items-center gap-2 md:gap-4 mt-0.5">
-                      <span className="text-[9px] md:text-[10px] font-mono text-slate-500 bg-black/30 px-1.5 py-0.5 rounded truncate max-w-[80px] md:max-w-none">ID: {item.id}</span>
-                      <span className="text-[9px] md:text-[10px] font-mono text-[#ba6b3f] font-bold">SLOT: {startIndex + index}</span>
-                    </div>
+                    <p className="font-bold text-sm tracking-tight text-slate-200 truncate">{item.name}</p>
+                    <p className="text-[9px] font-mono text-[#ba6b3f] font-bold mt-0.5">GLOBAL POS: {startIndex + index}</p>
                   </div>
                 </div>
-                
-                <div className="md:hidden text-slate-600">
-                  <Menu size={20} />
-                </div>
-
-                {isDropTarget && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#3bdf7f] text-black text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest shadow-lg z-10">
-                    Insert
-                  </div>
-                )}
+                <div className="text-[10px] font-bold text-slate-600 px-2 py-1 bg-black/20 rounded-lg">SLOT {index + 1}</div>
               </div>
             );
           })}
         </div>
+
+        {/* ACTIVE STATUS OVERLAY PROVIDING CONTEXTUAL INFO */}
+        {draggedIndex !== null && (
+          <div className="bg-[#ba6b3f] p-4 flex flex-col items-center justify-center gap-1 border-t border-white/10 shadow-[0_-10px_20px_rgba(0,0,0,0.3)] animate-in slide-in-from-bottom">
+            <div className="flex items-center gap-3">
+               <Move className="animate-bounce text-white" size={18} />
+               <p className="text-xs font-black uppercase tracking-widest text-white">
+                 Moving: {products[draggedIndex].name}
+               </p>
+            </div>
+            <p className="text-[9px] font-bold text-black/50 uppercase">From Page {Math.floor(draggedIndex/ITEMS_PER_PAGE) + 1} • To New Destination</p>
+          </div>
+        )}
       </div>
     </div>
   );
